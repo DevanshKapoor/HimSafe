@@ -1,9 +1,9 @@
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import * as Location from 'expo-location';
 
 // --- Mock Data: Simulating reports from the backend ---
-// In the future, this data will be fetched from your server.
 const mockReports = [
   {
     id: 1,
@@ -29,13 +29,26 @@ const mockReports = [
 
 // --- Main App Component ---
 export default function App() {
-  // Initial map region set to a central point in Himachal Pradesh
-  const initialRegion = {
-    latitude: 31.71,
-    longitude: 76.93,
-    latitudeDelta: 2.5, // Zoom level for latitude
-    longitudeDelta: 2.5, // Zoom level for longitude
-  };
+  const [location, setLocation] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  // --- useEffect hook to request location permissions on app start ---
+  useEffect(() => {
+    (async () => {
+      // Request permission to access the user's location
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setErrorMsg('Permission to access location was denied. Showing default region.');
+        // Set a default location if permission is denied
+        setLocation({ latitude: 31.71, longitude: 76.93 }); 
+        return;
+      }
+
+      // Get the user's current location
+      let currentLocation = await Location.getCurrentPositionAsync({});
+      setLocation(currentLocation.coords);
+    })();
+  }, []);
 
   // --- Helper function to get marker color based on report type ---
   const getMarkerColor = (type) => {
@@ -51,13 +64,37 @@ export default function App() {
     }
   };
 
+  // --- Render a loading indicator while fetching location ---
+  if (!location) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#c0392b" />
+        <Text style={styles.loadingText}>Finding your location...</Text>
+      </View>
+    );
+  }
+
+  // --- Define the map region based on the user's location ---
+  const mapRegion = {
+    latitude: location.latitude,
+    longitude: location.longitude,
+    latitudeDelta: 2.5, // Zoom level
+    longitudeDelta: 2.5,
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
       {/* --- Map View --- */}
-      {/* This is the main map where all reports will be displayed */}
-      <MapView style={styles.map} initialRegion={initialRegion}>
+      <MapView style={styles.map} initialRegion={mapRegion}>
+        {/* Add a marker for the user's current location */}
+        <Marker
+            coordinate={{ latitude: location.latitude, longitude: location.longitude }}
+            title="Your Location"
+            pinColor="blue"
+        />
+        
         {/* Loop through the mock reports and display a marker for each one */}
         {mockReports.map(report => (
           <Marker
@@ -73,8 +110,7 @@ export default function App() {
       {/* --- UI Overlay --- */}
       <View style={styles.overlay}>
         <Text style={styles.header}>HimPath</Text>
-        
-        {/* This button will eventually trigger the reporting workflow */}
+        {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
         <TouchableOpacity style={styles.reportButton}>
           <Text style={styles.reportButtonText}>Report Incident</Text>
         </TouchableOpacity>
@@ -84,14 +120,30 @@ export default function App() {
 }
 
 // --- Stylesheet ---
-// This keeps our styling organized and separate from the component logic.
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
   },
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#333',
+  },
+  errorText: {
+      backgroundColor: 'rgba(255, 255, 0, 0.8)',
+      color: '#333',
+      padding: 8,
+      borderRadius: 5,
+      marginTop: 10,
+      textAlign: 'center'
+  },
   map: {
-    ...StyleSheet.absoluteFillObject, // This makes the map fill the entire screen
+    ...StyleSheet.absoluteFillObject,
   },
   overlay: {
     position: 'absolute',
@@ -110,15 +162,15 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 16,
     marginTop: StatusBar.currentHeight || 40,
-    elevation: 5, // Shadow for Android
-    shadowColor: '#000', // Shadow for iOS
+    elevation: 5,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
   },
   reportButton: {
     position: 'absolute',
-    bottom: -650, // Positioned from the top of the overlay
+    bottom: -650,
     backgroundColor: '#c0392b',
     paddingVertical: 16,
     paddingHorizontal: 32,
